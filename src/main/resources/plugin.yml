@@ -1,0 +1,11 @@
+name: LegacyLock
+main: me.sumbiz.legacylock.LegacyLock
+version: 1.0.0
+api-version: "1.21"
+commands:
+  legacylock:
+    usage: /legacylock reload
+    permission: legacylock.admin
+permissions:
+  legacylock.admin:
+    default: op
