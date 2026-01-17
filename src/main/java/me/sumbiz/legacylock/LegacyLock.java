@@ -121,8 +121,8 @@ public class LegacyLock extends JavaPlugin implements Listener {
                       "placement": {
                         "type": "minecraft:random_spread",
                         "salt": %d,
-                        "separation": 2147483646,
-                        "spacing": 2147483647
+                        "separation": 4095,
+                        "spacing": 4096
                       },
                       "structures": [
                         { "structure": "minecraft:trial_chambers", "weight": 1 }
