@@ -1,5 +1,9 @@
 package me.sumbiz.legacylock;
 
+import me.sumbiz.legacylock.hook.MythicMobsHook;
+import me.sumbiz.legacylock.loot.LootConfig;
+import me.sumbiz.legacylock.loot.TrialLootHandler;
+import me.sumbiz.legacylock.loot.TrialSpawnerTracker;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -7,6 +11,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
@@ -21,6 +26,7 @@ import org.bukkit.event.world.WorldInitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -33,28 +39,40 @@ import java.util.Set;
 
 public class LegacyLock extends JavaPlugin implements Listener {
 
-    // 1.21.4 datapack format = 61
     private static final int DATAPACK_FORMAT_1_21_4 = 61;
-
-    // Trial Chambers placement salt (не критично, но можно оставить)
     private static final int TRIAL_CHAMBERS_SALT = 94251327;
 
     private final Set<Material> banned = EnumSet.noneOf(Material.class);
+
+    // Cached config flags for hot-path performance
+    private volatile boolean blockLootAndDrops = true;
+    private volatile boolean blockPickup = true;
+    private volatile boolean blockCrafting = true;
+    private volatile boolean blockPlace = true;
+    private volatile boolean blockGiveCommand = true;
+    private volatile boolean cleanOnJoin = true;
+
+    // Trial spawner loot system
+    private volatile LootConfig lootConfig;
+    private TrialSpawnerTracker tracker;
+    private BukkitTask cleanupTask;
 
     @Override
     public void onEnable() {
         getLogger().info("LegacyLock enabling...");
 
         saveDefaultConfig();
-        reloadBans();
+        reloadAllConfig();
 
         Bukkit.getPluginManager().registerEvents(this, this);
 
         if (getConfig().getBoolean("enable_datapack_disable_trial_chambers", true)) {
-            for (World w : Bukkit.getWorlds()) ensureDatapackExists(w);
+            for (World w : Bukkit.getWorlds()) {
+                Bukkit.getScheduler().runTaskAsynchronously(this, () -> ensureDatapackExists(w));
+            }
         }
 
-        if (getConfig().getBoolean("clean_on_join", true)) {
+        if (cleanOnJoin) {
             for (Player p : Bukkit.getOnlinePlayers()) scrubPlayer(p);
         }
 
@@ -63,7 +81,37 @@ public class LegacyLock extends JavaPlugin implements Listener {
             for (Player p : Bukkit.getOnlinePlayers()) scrubPlayer(p);
         }, 20L * period, 20L * period);
 
-        getLogger().info("LegacyLock enabled. Banned materials loaded: " + banned.size());
+        // Trial spawner loot system
+        initLootSystem();
+
+        getLogger().info("LegacyLock enabled. Banned materials: " + banned.size());
+    }
+
+    private void initLootSystem() {
+        this.tracker = new TrialSpawnerTracker();
+
+        MythicMobsHook mythicHook = MythicMobsHook.create(this);
+        if (mythicHook != null) {
+            getLogger().info("MythicMobs integration enabled.");
+        }
+
+        if (lootConfig.isEnabled()) {
+            TrialLootHandler lootHandler = new TrialLootHandler(tracker, () -> lootConfig, mythicHook);
+            Bukkit.getPluginManager().registerEvents(lootHandler, this);
+
+            long cleanupTicks = 20L * lootConfig.getCleanupIntervalSeconds();
+            this.cleanupTask = Bukkit.getScheduler().runTaskTimerAsynchronously(this,
+                    () -> tracker.cleanup(lootConfig.getMaxTrackDurationMillis()),
+                    cleanupTicks, cleanupTicks);
+
+            getLogger().info("Trial spawner loot system enabled.");
+        }
+    }
+
+    private void reloadAllConfig() {
+        reloadBans();
+        cacheConfigFlags();
+        this.lootConfig = new LootConfig(getConfig(), getLogger());
     }
 
     private void reloadBans() {
@@ -78,6 +126,15 @@ public class LegacyLock extends JavaPlugin implements Listener {
         }
     }
 
+    private void cacheConfigFlags() {
+        blockLootAndDrops = getConfig().getBoolean("block_loot_and_drops", true);
+        blockPickup = getConfig().getBoolean("block_pickup", true);
+        blockCrafting = getConfig().getBoolean("block_crafting", true);
+        blockPlace = getConfig().getBoolean("block_place", true);
+        blockGiveCommand = getConfig().getBoolean("block_give_command", true);
+        cleanOnJoin = getConfig().getBoolean("clean_on_join", true);
+    }
+
     private boolean isBanned(Material m) {
         return banned.contains(m);
     }
@@ -86,7 +143,7 @@ public class LegacyLock extends JavaPlugin implements Listener {
     @EventHandler
     public void onWorldInit(WorldInitEvent e) {
         if (!getConfig().getBoolean("enable_datapack_disable_trial_chambers", true)) return;
-        ensureDatapackExists(e.getWorld());
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> ensureDatapackExists(e.getWorld()));
     }
 
     private void ensureDatapackExists(World world) {
@@ -143,23 +200,23 @@ public class LegacyLock extends JavaPlugin implements Listener {
         }
     }
 
-    // --- Loot / drops ---
+    // --- Loot / drops (HIGH priority — runs after TrialLootHandler at NORMAL) ---
     @EventHandler
     public void onLootGenerate(LootGenerateEvent e) {
-        if (!getConfig().getBoolean("block_loot_and_drops", true)) return;
+        if (!blockLootAndDrops) return;
         e.getLoot().removeIf(it -> it != null && isBanned(it.getType()));
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGH)
     public void onEntityDeath(EntityDeathEvent e) {
-        if (!getConfig().getBoolean("block_loot_and_drops", true)) return;
+        if (!blockLootAndDrops) return;
         e.getDrops().removeIf(it -> it != null && isBanned(it.getType()));
     }
 
     // --- Pickup ---
     @EventHandler
     public void onPickup(EntityPickupItemEvent e) {
-        if (!getConfig().getBoolean("block_pickup", true)) return;
+        if (!blockPickup) return;
         ItemStack st = e.getItem().getItemStack();
         if (st != null && isBanned(st.getType())) {
             e.setCancelled(true);
@@ -170,7 +227,7 @@ public class LegacyLock extends JavaPlugin implements Listener {
     // --- Crafting / smithing / anvil ---
     @EventHandler
     public void onPrepareCraft(PrepareItemCraftEvent e) {
-        if (!getConfig().getBoolean("block_crafting", true)) return;
+        if (!blockCrafting) return;
         ItemStack result = e.getInventory().getResult();
         if (result != null && isBanned(result.getType())) {
             e.getInventory().setResult(new ItemStack(Material.AIR));
@@ -179,7 +236,7 @@ public class LegacyLock extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onPrepareSmithing(PrepareSmithingEvent e) {
-        if (!getConfig().getBoolean("block_crafting", true)) return;
+        if (!blockCrafting) return;
         ItemStack result = e.getResult();
         if (result != null && isBanned(result.getType())) {
             e.setResult(new ItemStack(Material.AIR));
@@ -188,7 +245,7 @@ public class LegacyLock extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onPrepareAnvil(PrepareAnvilEvent e) {
-        if (!getConfig().getBoolean("block_crafting", true)) return;
+        if (!blockCrafting) return;
         ItemStack result = e.getResult();
         if (result != null && isBanned(result.getType())) {
             e.setResult(new ItemStack(Material.AIR));
@@ -198,7 +255,7 @@ public class LegacyLock extends JavaPlugin implements Listener {
     // --- Place blocks ---
     @EventHandler
     public void onPlace(BlockPlaceEvent e) {
-        if (!getConfig().getBoolean("block_place", true)) return;
+        if (!blockPlace) return;
         if (isBanned(e.getBlockPlaced().getType())) {
             e.setCancelled(true);
             e.getPlayer().sendMessage("§cЗапрещено (выше 1.20.6): §e" + e.getBlockPlaced().getType());
@@ -208,7 +265,7 @@ public class LegacyLock extends JavaPlugin implements Listener {
     // --- Block /give ---
     @EventHandler
     public void onCmd(PlayerCommandPreprocessEvent e) {
-        if (!getConfig().getBoolean("block_give_command", true)) return;
+        if (!blockGiveCommand) return;
 
         String msg = e.getMessage().toLowerCase(Locale.ROOT);
         if (!(msg.startsWith("/give ") || msg.startsWith("/minecraft:give "))) return;
@@ -233,7 +290,7 @@ public class LegacyLock extends JavaPlugin implements Listener {
     // --- Inventory cleaning ---
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
-        if (!getConfig().getBoolean("clean_on_join", true)) return;
+        if (!cleanOnJoin) return;
         scrubPlayer(e.getPlayer());
     }
 
@@ -258,8 +315,9 @@ public class LegacyLock extends JavaPlugin implements Listener {
 
         if (args.length == 1 && args[0].equalsIgnoreCase("reload")) {
             reloadConfig();
-            reloadBans();
-            sender.sendMessage("§aLegacyLock config reloaded. Banned loaded: " + banned.size());
+            reloadAllConfig();
+            sender.sendMessage("§aLegacyLock config reloaded. Banned: " + banned.size()
+                    + " | Loot system: " + (lootConfig.isEnabled() ? "ON" : "OFF"));
             return true;
         }
 
