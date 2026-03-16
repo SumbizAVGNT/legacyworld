@@ -2,8 +2,8 @@ package me.sumbiz.legacylock;
 
 import me.sumbiz.legacylock.hook.MythicMobsHook;
 import me.sumbiz.legacylock.loot.LootConfig;
-import me.sumbiz.legacylock.loot.TrialLootHandler;
-import me.sumbiz.legacylock.loot.TrialSpawnerTracker;
+import me.sumbiz.legacylock.loot.TrialSpawnerMobHandler;
+import me.sumbiz.legacylock.loot.VaultLootHandler;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -26,7 +26,6 @@ import org.bukkit.event.world.WorldInitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitTask;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -44,7 +43,7 @@ public class LegacyLock extends JavaPlugin implements Listener {
 
     private final Set<Material> banned = EnumSet.noneOf(Material.class);
 
-    // Cached config flags for hot-path performance
+    // Cached config flags
     private volatile boolean blockLootAndDrops = true;
     private volatile boolean blockPickup = true;
     private volatile boolean blockCrafting = true;
@@ -52,10 +51,8 @@ public class LegacyLock extends JavaPlugin implements Listener {
     private volatile boolean blockGiveCommand = true;
     private volatile boolean cleanOnJoin = true;
 
-    // Trial spawner loot system
+    // Vault loot & mob replacement
     private volatile LootConfig lootConfig;
-    private TrialSpawnerTracker tracker;
-    private BukkitTask cleanupTask;
 
     @Override
     public void onEnable() {
@@ -81,30 +78,30 @@ public class LegacyLock extends JavaPlugin implements Listener {
             for (Player p : Bukkit.getOnlinePlayers()) scrubPlayer(p);
         }, 20L * period, 20L * period);
 
-        // Trial spawner loot system
+        // Vault loot & MythicMobs integration
         initLootSystem();
 
         getLogger().info("LegacyLock enabled. Banned materials: " + banned.size());
     }
 
     private void initLootSystem() {
-        this.tracker = new TrialSpawnerTracker();
-
         MythicMobsHook mythicHook = MythicMobsHook.create(this);
         if (mythicHook != null) {
             getLogger().info("MythicMobs integration enabled.");
         }
 
         if (lootConfig.isEnabled()) {
-            TrialLootHandler lootHandler = new TrialLootHandler(tracker, () -> lootConfig, mythicHook);
-            Bukkit.getPluginManager().registerEvents(lootHandler, this);
+            VaultLootHandler vaultHandler = new VaultLootHandler(() -> lootConfig, mythicHook);
+            Bukkit.getPluginManager().registerEvents(vaultHandler, this);
+            getLogger().info("Vault loot system enabled.");
+        }
 
-            long cleanupTicks = 20L * lootConfig.getCleanupIntervalSeconds();
-            this.cleanupTask = Bukkit.getScheduler().runTaskTimerAsynchronously(this,
-                    () -> tracker.cleanup(lootConfig.getMaxTrackDurationMillis()),
-                    cleanupTicks, cleanupTicks);
-
-            getLogger().info("Trial spawner loot system enabled.");
+        if (lootConfig.isMobReplacementEnabled() && mythicHook != null) {
+            TrialSpawnerMobHandler mobHandler = new TrialSpawnerMobHandler(mythicHook, () -> lootConfig);
+            Bukkit.getPluginManager().registerEvents(mobHandler, this);
+            getLogger().info("Trial spawner mob replacement enabled.");
+        } else if (lootConfig.isMobReplacementEnabled() && mythicHook == null) {
+            getLogger().warning("trial_spawner_mobs.enabled=true but MythicMobs not found! Mob replacement disabled.");
         }
     }
 
@@ -200,7 +197,7 @@ public class LegacyLock extends JavaPlugin implements Listener {
         }
     }
 
-    // --- Loot / drops (HIGH priority — runs after TrialLootHandler at NORMAL) ---
+    // --- Loot / drops (HIGH priority — after VaultLootHandler at HIGH) ---
     @EventHandler
     public void onLootGenerate(LootGenerateEvent e) {
         if (!blockLootAndDrops) return;
@@ -317,7 +314,8 @@ public class LegacyLock extends JavaPlugin implements Listener {
             reloadConfig();
             reloadAllConfig();
             sender.sendMessage("§aLegacyLock config reloaded. Banned: " + banned.size()
-                    + " | Loot system: " + (lootConfig.isEnabled() ? "ON" : "OFF"));
+                    + " | Vault loot: " + (lootConfig.isEnabled() ? "ON" : "OFF")
+                    + " | Mob replace: " + (lootConfig.isMobReplacementEnabled() ? "ON" : "OFF"));
             return true;
         }
 

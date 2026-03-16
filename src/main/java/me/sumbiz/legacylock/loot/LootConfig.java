@@ -3,6 +3,7 @@ package me.sumbiz.legacylock.loot;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.entity.EntityType;
 
 import java.util.*;
 import java.util.logging.Logger;
@@ -10,78 +11,82 @@ import java.util.logging.Logger;
 public final class LootConfig {
 
     private final boolean enabled;
-    private final long maxTrackDurationMillis;
-    private final int cleanupIntervalSeconds;
+    private final boolean replaceVanillaLoot;
+    private final List<LootEntry> normalKeyLoot;
+    private final List<LootEntry> ominousKeyLoot;
 
-    private final Map<String, List<LootEntry>> normalKeyLoot;
-    private final Map<String, List<LootEntry>> ominousKeyLoot;
-    private final List<LootEntry> normalKeyDefault;
-    private final List<LootEntry> ominousKeyDefault;
+    private final boolean mobReplacementEnabled;
+    private final Map<EntityType, String> mobReplacements;
 
     public LootConfig(FileConfiguration config, Logger logger) {
-        ConfigurationSection section = config.getConfigurationSection("trial_spawner_loot");
-        if (section == null) {
+        ConfigurationSection vaultSection = config.getConfigurationSection("vault_loot");
+        if (vaultSection == null) {
             this.enabled = false;
-            this.maxTrackDurationMillis = 30L * 60_000;
-            this.cleanupIntervalSeconds = 300;
-            this.normalKeyLoot = Map.of();
-            this.ominousKeyLoot = Map.of();
-            this.normalKeyDefault = List.of();
-            this.ominousKeyDefault = List.of();
-            return;
+            this.replaceVanillaLoot = true;
+            this.normalKeyLoot = List.of();
+            this.ominousKeyLoot = List.of();
+        } else {
+            this.enabled = vaultSection.getBoolean("enabled", true);
+            this.replaceVanillaLoot = vaultSection.getBoolean("replace_vanilla_loot", true);
+            this.normalKeyLoot = Collections.unmodifiableList(
+                    parseLootEntries(vaultSection.getMapList("normal_key"), logger, "vault_loot.normal_key"));
+            this.ominousKeyLoot = Collections.unmodifiableList(
+                    parseLootEntries(vaultSection.getMapList("ominous_key"), logger, "vault_loot.ominous_key"));
         }
 
-        this.enabled = section.getBoolean("enabled", true);
-        this.maxTrackDurationMillis = section.getInt("max_track_duration_minutes", 30) * 60_000L;
-        this.cleanupIntervalSeconds = Math.max(10, section.getInt("cleanup_interval_seconds", 300));
-
-        this.normalKeyDefault = parseLootList(section, "normal.default", logger);
-        this.ominousKeyDefault = parseLootList(section, "ominous.default", logger);
-
-        this.normalKeyLoot = Collections.unmodifiableMap(parseMobLootMap(section.getConfigurationSection("normal"), logger));
-        this.ominousKeyLoot = Collections.unmodifiableMap(parseMobLootMap(section.getConfigurationSection("ominous"), logger));
+        ConfigurationSection mobSection = config.getConfigurationSection("trial_spawner_mobs");
+        if (mobSection == null || !mobSection.getBoolean("enabled", false)) {
+            this.mobReplacementEnabled = false;
+            this.mobReplacements = Map.of();
+        } else {
+            this.mobReplacementEnabled = true;
+            ConfigurationSection replacements = mobSection.getConfigurationSection("replacements");
+            if (replacements == null) {
+                this.mobReplacements = Map.of();
+            } else {
+                Map<EntityType, String> map = new EnumMap<>(EntityType.class);
+                for (String key : replacements.getKeys(false)) {
+                    try {
+                        EntityType type = EntityType.valueOf(key.trim().toUpperCase(Locale.ROOT));
+                        String mythicMobId = replacements.getString(key);
+                        if (mythicMobId != null && !mythicMobId.isBlank()) {
+                            map.put(type, mythicMobId.trim());
+                        }
+                    } catch (IllegalArgumentException ex) {
+                        logger.warning("[LootConfig] Unknown EntityType in trial_spawner_mobs.replacements: " + key);
+                    }
+                }
+                this.mobReplacements = Collections.unmodifiableMap(map);
+            }
+        }
     }
 
     public boolean isEnabled() {
         return enabled;
     }
 
-    public long getMaxTrackDurationMillis() {
-        return maxTrackDurationMillis;
+    public boolean isReplaceVanillaLoot() {
+        return replaceVanillaLoot;
     }
 
-    public int getCleanupIntervalSeconds() {
-        return cleanupIntervalSeconds;
+    public List<LootEntry> getNormalKeyLoot() {
+        return normalKeyLoot;
     }
 
-    public List<LootEntry> getLoot(String mobId, boolean isOminous) {
-        Map<String, List<LootEntry>> map = isOminous ? ominousKeyLoot : normalKeyLoot;
-        List<LootEntry> specific = map.get(mobId);
-        if (specific != null) return specific;
-        return isOminous ? ominousKeyDefault : normalKeyDefault;
+    public List<LootEntry> getOminousKeyLoot() {
+        return ominousKeyLoot;
     }
 
-    private static Map<String, List<LootEntry>> parseMobLootMap(ConfigurationSection section, Logger logger) {
-        if (section == null) return Map.of();
-
-        Map<String, List<LootEntry>> map = new HashMap<>();
-        for (String key : section.getKeys(false)) {
-            if (key.equals("default")) continue;
-            List<LootEntry> entries = parseLootEntries(section.getMapList(key), logger, key);
-            if (!entries.isEmpty()) {
-                map.put(key, Collections.unmodifiableList(entries));
-            }
-        }
-        return map;
+    public boolean isMobReplacementEnabled() {
+        return mobReplacementEnabled;
     }
 
-    private static List<LootEntry> parseLootList(ConfigurationSection parent, String path, Logger logger) {
-        if (parent == null) return List.of();
-        List<?> raw = parent.getList(path);
-        if (raw == null) return List.of();
-        @SuppressWarnings("unchecked")
-        List<Map<?, ?>> mapList = (List<Map<?, ?>>) raw;
-        return Collections.unmodifiableList(parseLootEntries(mapList, logger, path));
+    public Map<EntityType, String> getMobReplacements() {
+        return mobReplacements;
+    }
+
+    public String getMobReplacement(EntityType type) {
+        return mobReplacements.get(type);
     }
 
     private static List<LootEntry> parseLootEntries(List<Map<?, ?>> list, Logger logger, String context) {
@@ -90,8 +95,16 @@ public final class LootConfig {
         List<LootEntry> result = new ArrayList<>(list.size());
         for (Map<?, ?> entry : list) {
             try {
-                String matName = String.valueOf(entry.get("material")).trim().toUpperCase(Locale.ROOT);
-                Material mat = Material.valueOf(matName);
+                String mythicItemId = null;
+                Material mat = null;
+
+                Object mythicObj = entry.get("mythic_item");
+                if (mythicObj != null) {
+                    mythicItemId = String.valueOf(mythicObj).trim();
+                } else {
+                    String matName = String.valueOf(entry.get("material")).trim().toUpperCase(Locale.ROOT);
+                    mat = Material.valueOf(matName);
+                }
 
                 double chance = ((Number) entry.get("chance")).doubleValue();
 
@@ -107,7 +120,7 @@ public final class LootConfig {
                     maxAmount = amt;
                 }
 
-                result.add(new LootEntry(mat, minAmount, maxAmount, chance));
+                result.add(new LootEntry(mat, mythicItemId, minAmount, maxAmount, chance));
             } catch (Exception ex) {
                 logger.warning("[LootConfig] Skipping invalid loot entry in '" + context + "': " + ex.getMessage());
             }
