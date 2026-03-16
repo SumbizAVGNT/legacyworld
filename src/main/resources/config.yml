@@ -176,6 +176,21 @@ vault_loot:
     # - mythic_item: "LegendarySword"
     #   amount: 1
     #   chance: 0.05
+    # Nexo предмет (требуется Nexo на сервере)
+    # - nexo_item: "custom_sword"
+    #   amount: 1
+    #   chance: 0.10
+    # Кастомная голова с base64 текстурой
+    # - base64_head: "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvIn19fQ=="
+    #   amount: 1
+    #   chance: 0.05
+    # Предмет с полным NBT (автоматически создаётся из GUI при сохранении предметов с зачарованиями, именами и т.д.)
+    # - item_data:
+    #     ==: org.bukkit.inventory.ItemStack
+    #     v: 3700
+    #     type: DIAMOND_SWORD
+    #   amount: 1
+    #   chance: 0.05
 
   # Лут при использовании Ominous Trial Key
   ominous_key:
@@ -191,6 +206,9 @@ vault_loot:
     # - mythic_item: "MythicArmor"
     #   amount: 1
     #   chance: 0.10
+    # - nexo_item: "epic_helmet"
+    #   amount: 1
+    #   chance: 0.08
 
 # ========== Trial Spawner Mob Replacement ==========
 # Замена ванильных мобов из Trial Spawner'а на MythicMobs мобов.

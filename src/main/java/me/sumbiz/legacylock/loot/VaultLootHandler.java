@@ -1,6 +1,9 @@
 package me.sumbiz.legacylock.loot;
 
+import com.destroystokyo.paper.profile.PlayerProfile;
+import com.destroystokyo.paper.profile.ProfileProperty;
 import me.sumbiz.legacylock.hook.MythicMobsHook;
+import me.sumbiz.legacylock.hook.NexoHook;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
@@ -10,6 +13,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.plugin.Plugin;
 
 import java.util.List;
@@ -24,12 +28,15 @@ public final class VaultLootHandler implements Listener {
     private final Plugin plugin;
     private final Supplier<LootConfig> configSupplier;
     private final MythicMobsHook mythicHook;
+    private final NexoHook nexoHook;
     private final Map<UUID, Long> cooldowns = new ConcurrentHashMap<>();
 
-    public VaultLootHandler(Plugin plugin, Supplier<LootConfig> configSupplier, MythicMobsHook mythicHook) {
+    public VaultLootHandler(Plugin plugin, Supplier<LootConfig> configSupplier,
+                            MythicMobsHook mythicHook, NexoHook nexoHook) {
         this.plugin = plugin;
         this.configSupplier = configSupplier;
         this.mythicHook = mythicHook;
+        this.nexoHook = nexoHook;
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -142,19 +149,62 @@ public final class VaultLootHandler implements Listener {
                     ? entry.minAmount()
                     : rng.nextInt(entry.minAmount(), entry.maxAmount() + 1);
 
-            ItemStack item;
-            if (entry.isMythicItem() && mythicHook != null) {
-                item = mythicHook.getMythicItem(entry.mythicItemId());
-                if (item == null) continue;
-                item.setAmount(amount);
-            } else if (entry.material() != null) {
-                item = new ItemStack(entry.material(), amount);
-            } else {
-                continue;
-            }
+            ItemStack item = resolveItem(entry);
+            if (item == null) continue;
 
+            item.setAmount(amount);
             dropLocation.getWorld().dropItemNaturally(dropLocation, item);
         }
+    }
+
+    /**
+     * Resolve a LootEntry into an ItemStack for dropping.
+     */
+    private ItemStack resolveItem(LootEntry entry) {
+        // Nexo item
+        if (entry.isNexoItem() && nexoHook != null) {
+            ItemStack item = nexoHook.createItem(entry.nexoItemId());
+            if (item != null) return item;
+        }
+
+        // MythicMobs item
+        if (entry.isMythicItem() && mythicHook != null) {
+            ItemStack item = mythicHook.getMythicItem(entry.mythicItemId());
+            if (item != null) return item;
+        }
+
+        // Base64 player head
+        if (entry.isBase64Head()) {
+            return createBase64Head(entry.base64Texture());
+        }
+
+        // Custom item (full NBT serialization)
+        if (entry.isCustomItem()) {
+            try {
+                return ItemStack.deserialize(entry.itemData());
+            } catch (Exception e) {
+                return null;
+            }
+        }
+
+        // Simple vanilla material
+        if (entry.material() != null) {
+            return new ItemStack(entry.material());
+        }
+
+        return null;
+    }
+
+    private static ItemStack createBase64Head(String base64) {
+        ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+        SkullMeta meta = (SkullMeta) head.getItemMeta();
+        if (meta != null) {
+            PlayerProfile profile = Bukkit.createProfile(UUID.randomUUID(), "");
+            profile.getProperties().add(new ProfileProperty("textures", base64));
+            meta.setPlayerProfile(profile);
+            head.setItemMeta(meta);
+        }
+        return head;
     }
 
     public void clearCooldown(UUID playerId) {
