@@ -103,6 +103,7 @@ public final class LootConfig {
         return mobReplacements.get(type);
     }
 
+    @SuppressWarnings("unchecked")
     private static List<LootEntry> parseLootEntries(List<Map<?, ?>> list, Logger logger, String context) {
         if (list == null || list.isEmpty()) return List.of();
 
@@ -110,11 +111,25 @@ public final class LootConfig {
         for (Map<?, ?> entry : list) {
             try {
                 String mythicItemId = null;
+                String nexoItemId = null;
+                String base64Texture = null;
+                Map<String, Object> itemData = null;
                 Material mat = null;
 
+                // Priority: nexo_item > mythic_item > base64_head > item_data > material
+                Object nexoObj = entry.get("nexo_item");
                 Object mythicObj = entry.get("mythic_item");
-                if (mythicObj != null) {
+                Object base64Obj = entry.get("base64_head");
+                Object itemDataObj = entry.get("item_data");
+
+                if (nexoObj != null) {
+                    nexoItemId = String.valueOf(nexoObj).trim();
+                } else if (mythicObj != null) {
                     mythicItemId = String.valueOf(mythicObj).trim();
+                } else if (base64Obj != null) {
+                    base64Texture = String.valueOf(base64Obj).trim();
+                } else if (itemDataObj instanceof Map<?, ?> rawMap) {
+                    itemData = (Map<String, Object>) rawMap;
                 } else {
                     String matName = String.valueOf(entry.get("material")).trim().toUpperCase(Locale.ROOT);
                     mat = Material.valueOf(matName);
@@ -134,7 +149,7 @@ public final class LootConfig {
                     maxAmount = amt;
                 }
 
-                result.add(new LootEntry(mat, mythicItemId, minAmount, maxAmount, chance));
+                result.add(new LootEntry(mat, mythicItemId, nexoItemId, base64Texture, itemData, minAmount, maxAmount, chance));
             } catch (Exception ex) {
                 logger.warning("[LootConfig] Skipping invalid loot entry in '" + context + "': " + ex.getMessage());
             }

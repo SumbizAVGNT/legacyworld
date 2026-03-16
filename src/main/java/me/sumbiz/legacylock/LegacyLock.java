@@ -2,6 +2,7 @@ package me.sumbiz.legacylock;
 
 import me.sumbiz.legacylock.gui.VaultLootGUI;
 import me.sumbiz.legacylock.hook.MythicMobsHook;
+import me.sumbiz.legacylock.hook.NexoHook;
 import me.sumbiz.legacylock.loot.LootConfig;
 import me.sumbiz.legacylock.loot.TrialSpawnerMobHandler;
 import me.sumbiz.legacylock.loot.VaultLootHandler;
@@ -80,11 +81,11 @@ public class LegacyLock extends JavaPlugin implements Listener {
             for (Player p : Bukkit.getOnlinePlayers()) scrubPlayer(p);
         }, 20L * period, 20L * period);
 
-        // GUI
-        this.vaultLootGUI = new VaultLootGUI(this);
+        // GUI — pass auto-reload callback
+        this.vaultLootGUI = new VaultLootGUI(this, this::reloadLootConfig);
         Bukkit.getPluginManager().registerEvents(vaultLootGUI, this);
 
-        // Vault loot & MythicMobs integration
+        // Vault loot & hooks
         initLootSystem();
 
         getLogger().info("LegacyLock enabled. Banned materials: " + banned.size());
@@ -96,8 +97,17 @@ public class LegacyLock extends JavaPlugin implements Listener {
             getLogger().info("MythicMobs integration enabled.");
         }
 
+        NexoHook nexoHook = NexoHook.create(this);
+        if (nexoHook != null) {
+            getLogger().info("Nexo integration enabled.");
+        }
+
+        // Pass hooks to GUI for item detection/display
+        vaultLootGUI.setMythicHook(mythicHook);
+        vaultLootGUI.setNexoHook(nexoHook);
+
         if (lootConfig.isEnabled()) {
-            VaultLootHandler vaultHandler = new VaultLootHandler(this, () -> lootConfig, mythicHook);
+            VaultLootHandler vaultHandler = new VaultLootHandler(this, () -> lootConfig, mythicHook, nexoHook);
             Bukkit.getPluginManager().registerEvents(vaultHandler, this);
             getLogger().info("Vault loot system enabled.");
         }
@@ -109,6 +119,14 @@ public class LegacyLock extends JavaPlugin implements Listener {
         } else if (lootConfig.isMobReplacementEnabled() && mythicHook == null) {
             getLogger().warning("trial_spawner_mobs.enabled=true but MythicMobs not found! Mob replacement disabled.");
         }
+    }
+
+    /**
+     * Reload only the loot config (called after GUI save for instant apply).
+     */
+    private void reloadLootConfig() {
+        reloadConfig();
+        this.lootConfig = new LootConfig(getConfig(), getLogger());
     }
 
     private void reloadAllConfig() {
