@@ -62,7 +62,12 @@ public class LegacyLock extends JavaPlugin implements Listener {
         getLogger().info("LegacyLock enabling...");
 
         saveDefaultConfig();
-        reloadAllConfig();
+        try {
+            reloadAllConfig();
+        } catch (Exception e) {
+            getLogger().severe("Failed to load config: " + e.getMessage());
+            e.printStackTrace();
+        }
 
         Bukkit.getPluginManager().registerEvents(this, this);
 
@@ -92,32 +97,42 @@ public class LegacyLock extends JavaPlugin implements Listener {
     }
 
     private void initLootSystem() {
-        MythicMobsHook mythicHook = MythicMobsHook.create(this);
-        if (mythicHook != null) {
-            getLogger().info("MythicMobs integration enabled.");
-        }
+        try {
+            MythicMobsHook mythicHook = MythicMobsHook.create(this);
+            if (mythicHook != null) {
+                getLogger().info("MythicMobs integration enabled.");
+            }
 
-        NexoHook nexoHook = NexoHook.create(this);
-        if (nexoHook != null) {
-            getLogger().info("Nexo integration enabled.");
-        }
+            NexoHook nexoHook = null;
+            try {
+                nexoHook = NexoHook.create(this);
+                if (nexoHook != null) {
+                    getLogger().info("Nexo integration enabled.");
+                }
+            } catch (Exception | NoClassDefFoundError e) {
+                getLogger().warning("Failed to initialize Nexo hook: " + e.getMessage());
+            }
 
-        // Pass hooks to GUI for item detection/display
-        vaultLootGUI.setMythicHook(mythicHook);
-        vaultLootGUI.setNexoHook(nexoHook);
+            // Pass hooks to GUI for item detection/display
+            vaultLootGUI.setMythicHook(mythicHook);
+            vaultLootGUI.setNexoHook(nexoHook);
 
-        if (lootConfig.isEnabled()) {
-            VaultLootHandler vaultHandler = new VaultLootHandler(this, () -> lootConfig, mythicHook, nexoHook);
-            Bukkit.getPluginManager().registerEvents(vaultHandler, this);
-            getLogger().info("Vault loot system enabled.");
-        }
+            if (lootConfig.isEnabled()) {
+                VaultLootHandler vaultHandler = new VaultLootHandler(this, () -> lootConfig, mythicHook, nexoHook);
+                Bukkit.getPluginManager().registerEvents(vaultHandler, this);
+                getLogger().info("Vault loot system enabled.");
+            }
 
-        if (lootConfig.isMobReplacementEnabled() && mythicHook != null) {
-            TrialSpawnerMobHandler mobHandler = new TrialSpawnerMobHandler(mythicHook, () -> lootConfig);
-            Bukkit.getPluginManager().registerEvents(mobHandler, this);
-            getLogger().info("Trial spawner mob replacement enabled.");
-        } else if (lootConfig.isMobReplacementEnabled() && mythicHook == null) {
-            getLogger().warning("trial_spawner_mobs.enabled=true but MythicMobs not found! Mob replacement disabled.");
+            if (lootConfig.isMobReplacementEnabled() && mythicHook != null) {
+                TrialSpawnerMobHandler mobHandler = new TrialSpawnerMobHandler(mythicHook, () -> lootConfig);
+                Bukkit.getPluginManager().registerEvents(mobHandler, this);
+                getLogger().info("Trial spawner mob replacement enabled.");
+            } else if (lootConfig.isMobReplacementEnabled() && mythicHook == null) {
+                getLogger().warning("trial_spawner_mobs.enabled=true but MythicMobs not found! Mob replacement disabled.");
+            }
+        } catch (Exception | NoClassDefFoundError e) {
+            getLogger().severe("Failed to initialize loot system: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -125,8 +140,13 @@ public class LegacyLock extends JavaPlugin implements Listener {
      * Reload only the loot config (called after GUI save for instant apply).
      */
     private void reloadLootConfig() {
-        reloadConfig();
-        this.lootConfig = new LootConfig(getConfig(), getLogger());
+        try {
+            reloadConfig();
+            this.lootConfig = new LootConfig(getConfig(), getLogger());
+        } catch (Exception e) {
+            getLogger().severe("Failed to reload loot config: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     private void reloadAllConfig() {

@@ -40,7 +40,7 @@ public final class NexoHook {
             Method buildMethod = returnType.getMethod("build");
 
             return new NexoHook(idFromItemMethod, itemFromIdMethod, buildMethod);
-        } catch (Exception e) {
+        } catch (Exception | NoClassDefFoundError e) {
             plugin.getLogger().warning("Nexo found but failed to hook API: " + e.getMessage());
             return null;
         }
@@ -54,7 +54,7 @@ public final class NexoHook {
         try {
             Object result = idFromItemMethod.invoke(null, item);
             return result instanceof String s ? s : null;
-        } catch (Exception ignored) {
+        } catch (Exception | NoClassDefFoundError ignored) {
         }
         return null;
     }
@@ -71,7 +71,7 @@ public final class NexoHook {
             if (result instanceof ItemStack item) {
                 return item;
             }
-        } catch (Exception ignored) {
+        } catch (Exception | NoClassDefFoundError ignored) {
         }
         return null;
     }
