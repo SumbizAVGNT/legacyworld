@@ -22,6 +22,11 @@
             <id>papermc-repo</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
         </repository>
+        <!-- MythicMobs repo (needed only if using direct API imports instead of reflection) -->
+        <!-- <repository>
+            <id>lumine-repo</id>
+            <url>https://mvn.lumine.io/repository/maven-public/</url>
+        </repository> -->
     </repositories>
 
     <dependencies>
@@ -31,6 +36,14 @@
             <version>1.21.4-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
+        <!-- MythicMobs: integration via reflection, no compile-time dependency needed -->
+        <!-- <dependency>
+            <groupId>io.lumine</groupId>
+            <artifactId>Mythic-Dist</artifactId>
+            <version>5.6.1</version>
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency> -->
     </dependencies>
 
     <build>

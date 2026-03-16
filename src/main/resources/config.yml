@@ -142,3 +142,81 @@ banned_materials:
 
   - "CREAKING_HEART"
   - "CREAKING_SPAWN_EGG"
+
+# ========== Trial Spawner Loot System ==========
+# Настройка кастомного лута при убийстве мобов из trial spawner'ов.
+# Лут зависит от типа ключа (обычный / ominous) и типа моба.
+trial_spawner_loot:
+  enabled: true
+
+  # Сколько минут хранить информацию о мобе в трекере.
+  # Защита от утечек памяти если моб деспавнится без смерти.
+  max_track_duration_minutes: 30
+
+  # Интервал очистки просроченных записей (секунды)
+  cleanup_interval_seconds: 300
+
+  # Лут для мобов из ОБЫЧНОГО trial spawner'а (обычный Trial Key)
+  normal:
+    # "default" — фолбэк для любого моба, не указанного явно
+    default:
+      - material: IRON_INGOT
+        amount: 1-3
+        chance: 0.40
+      - material: GOLD_INGOT
+        amount: 1-2
+        chance: 0.20
+
+    # Лут по типу ванильного моба (имя EntityType)
+    ZOMBIE:
+      - material: ROTTEN_FLESH
+        amount: 1-4
+        chance: 0.80
+      - material: IRON_INGOT
+        amount: 1
+        chance: 0.10
+
+    SKELETON:
+      - material: BONE
+        amount: 1-3
+        chance: 0.75
+      - material: ARROW
+        amount: 2-5
+        chance: 0.50
+
+    # MythicMobs мобы — префикс "mythic:"
+    # "mythic:SkeletonKing":
+    #   - material: DIAMOND
+    #     amount: 1-2
+    #     chance: 0.30
+
+  # Лут для мобов из OMINOUS trial spawner'а (Ominous Trial Key)
+  ominous:
+    default:
+      - material: DIAMOND
+        amount: 1-2
+        chance: 0.30
+      - material: EMERALD
+        amount: 2-4
+        chance: 0.40
+
+    ZOMBIE:
+      - material: GOLDEN_APPLE
+        amount: 1
+        chance: 0.25
+      - material: IRON_INGOT
+        amount: 2-5
+        chance: 0.60
+
+    SKELETON:
+      - material: DIAMOND
+        amount: 1
+        chance: 0.20
+      - material: ARROW
+        amount: 5-10
+        chance: 0.70
+
+    # "mythic:SkeletonKing":
+    #   - material: NETHERITE_SCRAP
+    #     amount: 1
+    #     chance: 0.05
