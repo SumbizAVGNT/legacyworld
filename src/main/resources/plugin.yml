@@ -6,7 +6,7 @@ version: 1.0.0
 api-version: "1.21"
 commands:
   legacylock:
-    usage: /legacylock reload
+    usage: "/legacylock <reload|edit normal|edit ominous>"
     permission: legacylock.admin
 permissions:
   legacylock.admin:

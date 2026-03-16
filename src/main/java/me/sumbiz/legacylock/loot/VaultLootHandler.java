@@ -1,8 +1,7 @@
 package me.sumbiz.legacylock.loot;
 
 import me.sumbiz.legacylock.hook.MythicMobsHook;
-import org.bukkit.Location;
-import org.bukkit.Material;
+import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -11,17 +10,24 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.plugin.Plugin;
 
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
 
 public final class VaultLootHandler implements Listener {
 
+    private final Plugin plugin;
     private final Supplier<LootConfig> configSupplier;
     private final MythicMobsHook mythicHook;
+    private final Map<UUID, Long> cooldowns = new ConcurrentHashMap<>();
 
-    public VaultLootHandler(Supplier<LootConfig> configSupplier, MythicMobsHook mythicHook) {
+    public VaultLootHandler(Plugin plugin, Supplier<LootConfig> configSupplier, MythicMobsHook mythicHook) {
+        this.plugin = plugin;
         this.configSupplier = configSupplier;
         this.mythicHook = mythicHook;
     }
@@ -50,6 +56,23 @@ public final class VaultLootHandler implements Listener {
         LootConfig config = configSupplier.get();
         if (!config.isEnabled()) return;
 
+        Player player = event.getPlayer();
+
+        // Cooldown check
+        long cooldownMs = config.getVaultCooldownSeconds() * 1000L;
+        if (cooldownMs > 0) {
+            Long lastUse = cooldowns.get(player.getUniqueId());
+            if (lastUse != null) {
+                long remaining = (lastUse + cooldownMs) - System.currentTimeMillis();
+                if (remaining > 0) {
+                    event.setCancelled(true);
+                    player.sendMessage("§cПодождите §e" + (remaining / 1000 + 1) + " сек§c перед повторным использованием.");
+                    return;
+                }
+            }
+            cooldowns.put(player.getUniqueId(), System.currentTimeMillis());
+        }
+
         List<LootEntry> lootTable = isOminous ? config.getOminousKeyLoot() : config.getNormalKeyLoot();
         if (lootTable.isEmpty()) return;
 
@@ -60,14 +83,56 @@ public final class VaultLootHandler implements Listener {
             if (hand.getAmount() > 1) {
                 hand.setAmount(hand.getAmount() - 1);
             } else {
-                event.getPlayer().getInventory().setItemInMainHand(null);
+                player.getInventory().setItemInMainHand(null);
             }
         }
 
-        dropLoot(event.getPlayer(), block.getLocation().add(0.5, 1.0, 0.5), lootTable);
+        Location vaultLoc = block.getLocation().add(0.5, 0.5, 0.5);
+        Location dropLoc = block.getLocation().add(0.5, 1.0, 0.5);
+        int animationTicks = config.getAnimationDelayTicks();
+
+        if (animationTicks > 0) {
+            playAnimation(player, vaultLoc, animationTicks, () -> dropLoot(dropLoc, lootTable));
+        } else {
+            dropLoot(dropLoc, lootTable);
+        }
     }
 
-    private void dropLoot(Player player, Location dropLocation, List<LootEntry> lootTable) {
+    private void playAnimation(Player player, Location loc, int totalTicks, Runnable onComplete) {
+        World world = loc.getWorld();
+
+        // Initial sound
+        world.playSound(loc, Sound.BLOCK_VAULT_OPEN_SHUTTER, SoundCategory.BLOCKS, 1.0f, 1.0f);
+
+        // Particle ticks: spiral particles every 4 ticks
+        int steps = totalTicks / 4;
+        for (int i = 0; i < steps; i++) {
+            final int step = i;
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                double angle = (step * 2.0 * Math.PI) / steps;
+                double radius = 0.6;
+                double x = loc.getX() + Math.cos(angle) * radius;
+                double z = loc.getZ() + Math.sin(angle) * radius;
+                double y = loc.getY() + (step * 0.8 / steps);
+
+                world.spawnParticle(Particle.ENCHANT, x, y, z, 3, 0.1, 0.1, 0.1, 0.05);
+                world.spawnParticle(Particle.END_ROD, x, y, z, 1, 0, 0, 0, 0.02);
+
+                if (step == steps / 2) {
+                    world.playSound(loc, Sound.BLOCK_VAULT_ACTIVATE, SoundCategory.BLOCKS, 0.8f, 1.2f);
+                }
+            }, (long) i * 4);
+        }
+
+        // Final burst + loot drop
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            world.spawnParticle(Particle.TOTEM_OF_UNDYING, loc.getX(), loc.getY() + 0.8, loc.getZ(), 20, 0.3, 0.3, 0.3, 0.1);
+            world.playSound(loc, Sound.BLOCK_VAULT_CLOSE_SHUTTER, SoundCategory.BLOCKS, 1.0f, 1.4f);
+            onComplete.run();
+        }, totalTicks);
+    }
+
+    private void dropLoot(Location dropLocation, List<LootEntry> lootTable) {
         ThreadLocalRandom rng = ThreadLocalRandom.current();
 
         for (LootEntry entry : lootTable) {
@@ -90,5 +155,13 @@ public final class VaultLootHandler implements Listener {
 
             dropLocation.getWorld().dropItemNaturally(dropLocation, item);
         }
+    }
+
+    public void clearCooldown(UUID playerId) {
+        cooldowns.remove(playerId);
+    }
+
+    public void clearAllCooldowns() {
+        cooldowns.clear();
     }
 }

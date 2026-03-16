@@ -12,6 +12,8 @@ public final class LootConfig {
 
     private final boolean enabled;
     private final boolean replaceVanillaLoot;
+    private final int vaultCooldownSeconds;
+    private final int animationDelayTicks;
     private final List<LootEntry> normalKeyLoot;
     private final List<LootEntry> ominousKeyLoot;
 
@@ -23,11 +25,15 @@ public final class LootConfig {
         if (vaultSection == null) {
             this.enabled = false;
             this.replaceVanillaLoot = true;
+            this.vaultCooldownSeconds = 0;
+            this.animationDelayTicks = 0;
             this.normalKeyLoot = List.of();
             this.ominousKeyLoot = List.of();
         } else {
             this.enabled = vaultSection.getBoolean("enabled", true);
             this.replaceVanillaLoot = vaultSection.getBoolean("replace_vanilla_loot", true);
+            this.vaultCooldownSeconds = Math.max(0, vaultSection.getInt("cooldown_seconds", 5));
+            this.animationDelayTicks = Math.max(0, vaultSection.getInt("animation_delay_ticks", 30));
             this.normalKeyLoot = Collections.unmodifiableList(
                     parseLootEntries(vaultSection.getMapList("normal_key"), logger, "vault_loot.normal_key"));
             this.ominousKeyLoot = Collections.unmodifiableList(
@@ -67,6 +73,14 @@ public final class LootConfig {
 
     public boolean isReplaceVanillaLoot() {
         return replaceVanillaLoot;
+    }
+
+    public int getVaultCooldownSeconds() {
+        return vaultCooldownSeconds;
+    }
+
+    public int getAnimationDelayTicks() {
+        return animationDelayTicks;
     }
 
     public List<LootEntry> getNormalKeyLoot() {

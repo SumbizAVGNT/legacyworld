@@ -1,5 +1,6 @@
 package me.sumbiz.legacylock;
 
+import me.sumbiz.legacylock.gui.VaultLootGUI;
 import me.sumbiz.legacylock.hook.MythicMobsHook;
 import me.sumbiz.legacylock.loot.LootConfig;
 import me.sumbiz.legacylock.loot.TrialSpawnerMobHandler;
@@ -53,6 +54,7 @@ public class LegacyLock extends JavaPlugin implements Listener {
 
     // Vault loot & mob replacement
     private volatile LootConfig lootConfig;
+    private VaultLootGUI vaultLootGUI;
 
     @Override
     public void onEnable() {
@@ -78,6 +80,10 @@ public class LegacyLock extends JavaPlugin implements Listener {
             for (Player p : Bukkit.getOnlinePlayers()) scrubPlayer(p);
         }, 20L * period, 20L * period);
 
+        // GUI
+        this.vaultLootGUI = new VaultLootGUI(this);
+        Bukkit.getPluginManager().registerEvents(vaultLootGUI, this);
+
         // Vault loot & MythicMobs integration
         initLootSystem();
 
@@ -91,7 +97,7 @@ public class LegacyLock extends JavaPlugin implements Listener {
         }
 
         if (lootConfig.isEnabled()) {
-            VaultLootHandler vaultHandler = new VaultLootHandler(() -> lootConfig, mythicHook);
+            VaultLootHandler vaultHandler = new VaultLootHandler(this, () -> lootConfig, mythicHook);
             Bukkit.getPluginManager().registerEvents(vaultHandler, this);
             getLogger().info("Vault loot system enabled.");
         }
@@ -197,7 +203,7 @@ public class LegacyLock extends JavaPlugin implements Listener {
         }
     }
 
-    // --- Loot / drops (HIGH priority — after VaultLootHandler at HIGH) ---
+    // --- Loot / drops ---
     @EventHandler
     public void onLootGenerate(LootGenerateEvent e) {
         if (!blockLootAndDrops) return;
@@ -305,7 +311,7 @@ public class LegacyLock extends JavaPlugin implements Listener {
         }
     }
 
-    // --- Command to reload ---
+    // --- Commands ---
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
         if (!cmd.getName().equalsIgnoreCase("legacylock")) return false;
@@ -319,7 +325,29 @@ public class LegacyLock extends JavaPlugin implements Listener {
             return true;
         }
 
+        if (args.length == 2 && args[0].equalsIgnoreCase("edit")) {
+            if (!(sender instanceof Player player)) {
+                sender.sendMessage("§cOnly players can use this command.");
+                return true;
+            }
+
+            boolean ominous;
+            if (args[1].equalsIgnoreCase("normal")) {
+                ominous = false;
+            } else if (args[1].equalsIgnoreCase("ominous")) {
+                ominous = true;
+            } else {
+                sender.sendMessage("§cUsage: /legacylock edit <normal|ominous>");
+                return true;
+            }
+
+            var lootList = ominous ? lootConfig.getOminousKeyLoot() : lootConfig.getNormalKeyLoot();
+            vaultLootGUI.open(player, ominous, lootList);
+            return true;
+        }
+
         sender.sendMessage("§7/legacylock reload");
+        sender.sendMessage("§7/legacylock edit <normal|ominous>");
         return true;
     }
 }
