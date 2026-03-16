@@ -350,4 +350,23 @@ public class LegacyLock extends JavaPlugin implements Listener {
         sender.sendMessage("§7/legacylock edit <normal|ominous>");
         return true;
     }
+
+    @Override
+    public java.util.List<String> onTabComplete(CommandSender sender, Command cmd, String alias, String[] args) {
+        if (!cmd.getName().equalsIgnoreCase("legacylock")) return java.util.List.of();
+
+        if (args.length == 1) {
+            String prefix = args[0].toLowerCase(Locale.ROOT);
+            return java.util.List.of("reload", "edit").stream()
+                    .filter(s -> s.startsWith(prefix))
+                    .toList();
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("edit")) {
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            return java.util.List.of("normal", "ominous").stream()
+                    .filter(s -> s.startsWith(prefix))
+                    .toList();
+        }
+        return java.util.List.of();
+    }
 }
