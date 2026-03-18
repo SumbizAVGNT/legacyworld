@@ -98,10 +98,13 @@ public final class VaultLootHandler implements Listener {
         Location dropLoc = block.getLocation().add(0.5, 1.0, 0.5);
         int animationTicks = config.getAnimationDelayTicks();
 
+        int minDrops = config.getMinDrops();
+        int maxDrops = config.getMaxDrops();
+
         if (animationTicks > 0) {
-            playAnimation(player, vaultLoc, animationTicks, () -> dropLoot(dropLoc, lootTable));
+            playAnimation(player, vaultLoc, animationTicks, () -> dropLoot(dropLoc, lootTable, minDrops, maxDrops));
         } else {
-            dropLoot(dropLoc, lootTable);
+            dropLoot(dropLoc, lootTable, minDrops, maxDrops);
         }
     }
 
@@ -139,21 +142,43 @@ public final class VaultLootHandler implements Listener {
         }, totalTicks);
     }
 
-    private void dropLoot(Location dropLocation, List<LootEntry> lootTable) {
+    private void dropLoot(Location dropLocation, List<LootEntry> lootTable, int minDrops, int maxDrops) {
+        if (lootTable.isEmpty()) return;
+
         ThreadLocalRandom rng = ThreadLocalRandom.current();
 
+        // Calculate total weight from all entries
+        double totalWeight = 0;
         for (LootEntry entry : lootTable) {
-            if (rng.nextDouble() >= entry.chance()) continue;
+            totalWeight += entry.chance();
+        }
+        if (totalWeight <= 0) return;
 
-            int amount = entry.minAmount() == entry.maxAmount()
-                    ? entry.minAmount()
-                    : rng.nextInt(entry.minAmount(), entry.maxAmount() + 1);
+        // Determine how many items to drop this roll
+        int numDrops = minDrops == maxDrops
+                ? minDrops
+                : rng.nextInt(minDrops, maxDrops + 1);
 
-            ItemStack item = resolveItem(entry);
-            if (item == null) continue;
+        // For each drop, pick one item from the weighted pool
+        for (int d = 0; d < numDrops; d++) {
+            double roll = rng.nextDouble() * totalWeight;
+            double cumulative = 0;
 
-            item.setAmount(amount);
-            dropLocation.getWorld().dropItemNaturally(dropLocation, item);
+            for (LootEntry entry : lootTable) {
+                cumulative += entry.chance();
+                if (roll < cumulative) {
+                    int amount = entry.minAmount() == entry.maxAmount()
+                            ? entry.minAmount()
+                            : rng.nextInt(entry.minAmount(), entry.maxAmount() + 1);
+
+                    ItemStack item = resolveItem(entry);
+                    if (item != null) {
+                        item.setAmount(amount);
+                        dropLocation.getWorld().dropItemNaturally(dropLocation, item);
+                    }
+                    break;
+                }
+            }
         }
     }
 
