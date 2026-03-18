@@ -14,6 +14,8 @@ public final class LootConfig {
     private final boolean replaceVanillaLoot;
     private final int vaultCooldownSeconds;
     private final int animationDelayTicks;
+    private final int minDrops;
+    private final int maxDrops;
     private final List<LootEntry> normalKeyLoot;
     private final List<LootEntry> ominousKeyLoot;
 
@@ -27,6 +29,8 @@ public final class LootConfig {
             this.replaceVanillaLoot = true;
             this.vaultCooldownSeconds = 0;
             this.animationDelayTicks = 0;
+            this.minDrops = 1;
+            this.maxDrops = 3;
             this.normalKeyLoot = List.of();
             this.ominousKeyLoot = List.of();
         } else {
@@ -34,6 +38,8 @@ public final class LootConfig {
             this.replaceVanillaLoot = vaultSection.getBoolean("replace_vanilla_loot", true);
             this.vaultCooldownSeconds = Math.max(0, vaultSection.getInt("cooldown_seconds", 5));
             this.animationDelayTicks = Math.max(0, vaultSection.getInt("animation_delay_ticks", 30));
+            this.minDrops = Math.max(1, vaultSection.getInt("min_drops", 1));
+            this.maxDrops = Math.max(this.minDrops, vaultSection.getInt("max_drops", 3));
             this.normalKeyLoot = Collections.unmodifiableList(
                     parseLootEntries(vaultSection.getMapList("normal_key"), logger, "vault_loot.normal_key"));
             this.ominousKeyLoot = Collections.unmodifiableList(
@@ -81,6 +87,14 @@ public final class LootConfig {
 
     public int getAnimationDelayTicks() {
         return animationDelayTicks;
+    }
+
+    public int getMinDrops() {
+        return minDrops;
+    }
+
+    public int getMaxDrops() {
+        return maxDrops;
     }
 
     public List<LootEntry> getNormalKeyLoot() {
