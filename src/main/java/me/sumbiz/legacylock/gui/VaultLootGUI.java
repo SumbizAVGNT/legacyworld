@@ -290,7 +290,7 @@ public final class VaultLootGUI implements Listener {
         session.mythicIds[slot] = null; // cannot detect mythic items from ItemStack
         session.chances[slot] = 0.5;
         session.minAmounts[slot] = 1;
-        session.maxAmounts[slot] = clean.getMaxStackSize();
+        session.maxAmounts[slot] = 1;
 
         ItemStack display = clean.clone();
         updateLore(display, session.chances[slot], session.minAmounts[slot], session.maxAmounts[slot],
